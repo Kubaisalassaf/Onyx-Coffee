@@ -1,0 +1,6 @@
+{
+  "name": "ONYX Coffee",
+  "description": "ONYX Coffee & Equipment Marketplace Iraq - Premium specialty coffee, commercial espresso machines, grinders, and barista supplies in IQD.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
