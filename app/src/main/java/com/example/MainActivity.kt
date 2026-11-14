@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -26,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.OnyxRepository
+import com.example.data.remote.OnyxDeepLinkAction
+import com.example.data.remote.OnyxWebsiteSyncService
 import com.example.localization.AppLanguage
 import com.example.localization.LocalAppLanguage
 import com.example.localization.OnyxFormatter
@@ -47,17 +50,32 @@ enum class MainNavigationItem {
 }
 
 class MainActivity : ComponentActivity() {
+    private var pendingDeepLinkUri by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        pendingDeepLinkUri = intent?.dataString
         setContent {
-            OnyxCoffeeApp()
+            OnyxCoffeeApp(
+                deepLinkUri = pendingDeepLinkUri,
+                onConsumeDeepLink = { pendingDeepLinkUri = null }
+            )
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingDeepLinkUri = intent.dataString
     }
 }
 
 @Composable
-fun OnyxCoffeeApp() {
+fun OnyxCoffeeApp(
+    deepLinkUri: String? = null,
+    onConsumeDeepLink: () -> Unit = {}
+) {
     val context = LocalContext.current
     // Localization & RTL State (English, Arabic, Kurdish)
     var currentLanguage by remember { mutableStateOf(AppLanguage.ENGLISH) }
@@ -82,16 +100,58 @@ fun OnyxCoffeeApp() {
             val exchangeRate by OnyxRepository.exchangeRate.collectAsStateWithLifecycle()
             val customers by OnyxRepository.customers.collectAsStateWithLifecycle()
             val storeSettings by OnyxRepository.storeSettings.collectAsStateWithLifecycle()
+            val websiteConfig by OnyxRepository.websiteConfig.collectAsStateWithLifecycle()
+            val websiteSyncLogs by OnyxRepository.websiteSyncLogs.collectAsStateWithLifecycle()
 
             // Navigation State
             var currentNav by remember { mutableStateOf(MainNavigationItem.HOME) }
             var selectedShopCategory by remember { mutableStateOf(ProductCategory.ALL) }
+            var pendingTrackingQuery by remember { mutableStateOf<String?>(null) }
 
             // Modals & Dialogs State
             var selectedProductForDetail by remember { mutableStateOf<Product?>(null) }
             var isCartSheetOpen by remember { mutableStateOf(false) }
             var isTasteQuizOpen by remember { mutableStateOf(false) }
             var recentlyPlacedOrder by remember { mutableStateOf<Order?>(null) }
+
+            // Auto-sync catalog from onyxcoffeeiraq.com on launch if enabled
+            LaunchedEffect(websiteConfig.autoSyncCatalogOnLaunch) {
+                if (websiteConfig.autoSyncCatalogOnLaunch) {
+                    OnyxRepository.syncProductsFromWebsite()
+                }
+            }
+
+            // Route incoming onyxcoffeeiraq.com Android App Links into matching screens/modals
+            LaunchedEffect(deepLinkUri, products) {
+                val action = OnyxWebsiteSyncService.parseDeepLink(deepLinkUri) ?: return@LaunchedEffect
+                when (action) {
+                    is OnyxDeepLinkAction.OpenHome -> currentNav = MainNavigationItem.HOME
+                    is OnyxDeepLinkAction.OpenShop -> {
+                        selectedShopCategory = action.category
+                        currentNav = MainNavigationItem.SHOP
+                    }
+                    is OnyxDeepLinkAction.OpenProduct -> {
+                        val found = products.firstOrNull {
+                            it.id.equals(action.productId, ignoreCase = true) ||
+                                it.sku.equals(action.productId, ignoreCase = true)
+                        }
+                        if (found != null) {
+                            selectedProductForDetail = found
+                        } else {
+                            currentNav = MainNavigationItem.SHOP
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Opened store for link: ${action.productId}")
+                            }
+                        }
+                    }
+                    is OnyxDeepLinkAction.OpenTrackOrder -> {
+                        pendingTrackingQuery = action.orderOrTrackingQuery
+                        currentNav = MainNavigationItem.ACCOUNT
+                    }
+                    is OnyxDeepLinkAction.OpenJournal -> currentNav = MainNavigationItem.JOURNAL
+                }
+                onConsumeDeepLink()
+            }
 
             // Handle hardware back button
             if (isCartSheetOpen) {
@@ -326,7 +386,17 @@ fun OnyxCoffeeApp() {
                                     userProfile = currentUser,
                                     orders = orders,
                                     onToggleRole = { OnyxRepository.toggleUserRole() },
-                                    onNavigateToShop = { currentNav = MainNavigationItem.SHOP }
+                                    onNavigateToShop = { currentNav = MainNavigationItem.SHOP },
+                                    adminWhatsAppNumber = storeSettings.adminWhatsAppNumber,
+                                    websiteUrl = websiteConfig.websiteUrl,
+                                    initialTrackingOrderQuery = pendingTrackingQuery,
+                                    onClearInitialTrackingQuery = { pendingTrackingQuery = null },
+                                    onRefreshOrderFromWebsite = { orderNum ->
+                                        coroutineScope.launch {
+                                            val res = OnyxRepository.refreshOrderTrackingFromWebsite(orderNum)
+                                            snackbarHostState.showSnackbar(res.detail)
+                                        }
+                                    }
                                 )
                             }
 
@@ -380,6 +450,26 @@ fun OnyxCoffeeApp() {
                                     onUpdateAutoNotifyWhatsApp = { enabled ->
                                         OnyxRepository.updateAutoNotifyWhatsApp(enabled)
                                     },
+                                    websiteConfig = websiteConfig,
+                                    websiteSyncLogs = websiteSyncLogs,
+                                    onUpdateWebsiteConfig = { newConfig ->
+                                        OnyxRepository.updateWebsiteConfig(newConfig)
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("Website config saved for ${newConfig.websiteUrl}")
+                                        }
+                                    },
+                                    onTestWebsiteConnection = {
+                                        coroutineScope.launch {
+                                            val res = OnyxRepository.testWebsiteConnection()
+                                            snackbarHostState.showSnackbar(res.detail)
+                                        }
+                                    },
+                                    onSyncProductsFromWebsite = {
+                                        coroutineScope.launch {
+                                            val res = OnyxRepository.syncProductsFromWebsite()
+                                            snackbarHostState.showSnackbar(res.detail)
+                                        }
+                                    },
                                     onExitAdmin = { currentNav = MainNavigationItem.HOME }
                                 )
                             }
@@ -401,7 +491,8 @@ fun OnyxCoffeeApp() {
                                 duration = SnackbarDuration.Short
                             )
                         }
-                    }
+                    },
+                    websiteUrl = websiteConfig.websiteUrl
                 )
             }
 
@@ -432,6 +523,11 @@ fun OnyxCoffeeApp() {
                     onDismiss = { isCartSheetOpen = false },
                     onOrderSuccess = { placedOrder ->
                         recentlyPlacedOrder = placedOrder
+                        if (websiteConfig.autoSyncOrdersToWebsite) {
+                            coroutineScope.launch {
+                                OnyxRepository.syncOrderToWebsite(placedOrder)
+                            }
+                        }
                         if (storeSettings.autoSendWhatsAppOnOrder) {
                             val msg = WhatsAppNotificationHelper.generateOrderWhatsAppMessage(placedOrder, currentLanguage)
                             WhatsAppNotificationHelper.openWhatsApp(context, storeSettings.adminWhatsAppNumber, msg)

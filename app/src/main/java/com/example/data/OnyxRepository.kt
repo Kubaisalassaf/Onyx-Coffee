@@ -132,7 +132,7 @@ object OnyxRepository {
     // --- Store Settings & Admin WhatsApp Notifications ---
     private val _storeSettings = MutableStateFlow(
         StoreSettings(
-            adminWhatsAppNumber = "+9647501234567",
+            adminWhatsAppNumber = "+9647723058251",
             autoSendWhatsAppOnOrder = true,
             storeName = "ONYX Coffee Roasters Iraq"
         )
@@ -149,6 +149,97 @@ object OnyxRepository {
 
     fun updateAutoNotifyWhatsApp(enabled: Boolean) {
         _storeSettings.value = _storeSettings.value.copy(autoSendWhatsAppOnOrder = enabled)
+    }
+
+    // --- Website Bridge & Sync State (onyxcoffeeiraq.com) ---
+    private val _websiteConfig = MutableStateFlow(WebsiteIntegrationConfig())
+    val websiteConfig: StateFlow<WebsiteIntegrationConfig> = _websiteConfig.asStateFlow()
+
+    private val _websiteSyncLogs = MutableStateFlow<List<String>>(
+        listOf("Initialized App Links & API bridge for https://onyxcoffeeiraq.com")
+    )
+    val websiteSyncLogs: StateFlow<List<String>> = _websiteSyncLogs.asStateFlow()
+
+    private fun appendWebsiteLog(entry: String) {
+        val stamped = "[${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())}] $entry"
+        _websiteSyncLogs.value = (listOf(stamped) + _websiteSyncLogs.value).take(25)
+    }
+
+    fun updateWebsiteConfig(newConfig: WebsiteIntegrationConfig) {
+        val normalizedUrl = com.example.data.remote.OnyxWebsiteSyncService.normalizeBaseUrl(newConfig.websiteUrl).trimEnd('/')
+        val updated = newConfig.copy(websiteUrl = normalizedUrl)
+        _websiteConfig.value = updated
+        _storeSettings.value = _storeSettings.value.copy(websiteUrl = normalizedUrl)
+        appendWebsiteLog("Saved website config: $normalizedUrl (${updated.platformType.name})")
+    }
+
+    suspend fun testWebsiteConnection(): com.example.data.remote.WebsiteConnectionCheckResult {
+        val current = _websiteConfig.value
+        _websiteConfig.value = current.copy(
+            connectionStatus = WebsiteConnectionStatus.TESTING,
+            statusDetail = "Testing ${current.websiteUrl}..."
+        )
+        val result = com.example.data.remote.OnyxWebsiteSyncService.testConnection(current)
+        _websiteConfig.value = _websiteConfig.value.copy(
+            connectionStatus = result.status,
+            statusDetail = result.detail,
+            lastSyncedEpoch = System.currentTimeMillis()
+        )
+        appendWebsiteLog("Connection test -> ${result.detail}")
+        return result
+    }
+
+    suspend fun syncProductsFromWebsite(): com.example.data.remote.WebsiteProductSyncResult {
+        val current = _websiteConfig.value
+        _websiteConfig.value = current.copy(
+            connectionStatus = WebsiteConnectionStatus.TESTING,
+            statusDetail = "Syncing catalog from ${current.websiteUrl}..."
+        )
+        val result = com.example.data.remote.OnyxWebsiteSyncService.fetchProducts(current)
+        if (result.success && result.products.isNotEmpty()) {
+            val existingById = _products.value.associateBy { it.id }.toMutableMap()
+            result.products.forEach { remoteProduct ->
+                existingById[remoteProduct.id] = remoteProduct
+            }
+            _products.value = existingById.values.toList()
+        }
+        _websiteConfig.value = _websiteConfig.value.copy(
+            connectionStatus = result.status,
+            statusDetail = result.detail,
+            lastSyncedEpoch = System.currentTimeMillis()
+        )
+        appendWebsiteLog("Catalog sync -> ${result.detail}")
+        return result
+    }
+
+    suspend fun syncOrderToWebsite(order: Order): com.example.data.remote.WebsiteOrderSyncResult {
+        val current = _websiteConfig.value
+        val result = com.example.data.remote.OnyxWebsiteSyncService.pushOrder(order, current)
+        _websiteConfig.value = _websiteConfig.value.copy(
+            connectionStatus = result.status,
+            statusDetail = result.detail,
+            lastSyncedEpoch = System.currentTimeMillis()
+        )
+        appendWebsiteLog("Order ${order.orderNumber} -> ${result.detail}")
+        return result
+    }
+
+    suspend fun refreshOrderTrackingFromWebsite(orderNumber: String): com.example.data.remote.WebsiteOrderSyncResult {
+        val current = _websiteConfig.value
+        val result = com.example.data.remote.OnyxWebsiteSyncService.fetchOrderTrackingStatus(orderNumber, current)
+        if (result.success && result.remoteOrderStatus != null) {
+            _orders.value = _orders.value.map { order ->
+                if (order.orderNumber.equals(orderNumber, ignoreCase = true) ||
+                    order.trackingNumber.equals(orderNumber, ignoreCase = true)
+                ) {
+                    order.copy(orderStatus = result.remoteOrderStatus)
+                } else {
+                    order
+                }
+            }
+        }
+        appendWebsiteLog("Track $orderNumber -> ${result.detail}")
+        return result
     }
 
     // --- Cart Actions ---

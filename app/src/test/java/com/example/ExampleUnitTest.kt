@@ -364,17 +364,22 @@ class ExampleUnitTest {
         assertEquals("9647709876543", com.example.util.WhatsAppNotificationHelper.sanitizePhoneNumber(rawLocal2))
         assertEquals("9647801122334", com.example.util.WhatsAppNotificationHelper.sanitizePhoneNumber(rawLocal3))
 
-        // Test store settings default
-        val settings = OnyxRepository.storeSettings.value
-        assertNotNull(settings.adminWhatsAppNumber)
-        assertTrue(settings.adminWhatsAppNumber.isNotEmpty())
+        // Test store settings default (+9647723058251)
+        val defaultConfig = StoreSettings()
+        assertEquals("+9647723058251", defaultConfig.adminWhatsAppNumber)
 
-        // Update admin whatsapp number
+        val settings = OnyxRepository.storeSettings.value
+        assertEquals("+9647723058251", settings.adminWhatsAppNumber)
+
+        // Update admin whatsapp number and restore
         OnyxRepository.updateAdminWhatsAppNumber("+9647509998877")
         assertEquals("+9647509998877", OnyxRepository.storeSettings.value.adminWhatsAppNumber)
+        OnyxRepository.updateAdminWhatsAppNumber("+9647723058251")
+        assertEquals("+9647723058251", OnyxRepository.storeSettings.value.adminWhatsAppNumber)
 
         // Test generating notification message in Kurdish and Arabic
         val sampleOrder = OnyxRepository.orders.value.first()
+        assertTrue(sampleOrder.trackingNumber.startsWith("IQ-EXP-"))
         val kuMessage = com.example.util.WhatsAppNotificationHelper.generateOrderWhatsAppMessage(
             order = sampleOrder,
             language = AppLanguage.KURDISH
@@ -385,12 +390,91 @@ class ExampleUnitTest {
         )
 
         assertTrue(kuMessage.contains(sampleOrder.orderNumber))
+        assertTrue(kuMessage.contains(sampleOrder.trackingNumber))
         assertTrue(kuMessage.contains("ئۆنیکس کۆفی"))
         assertTrue(kuMessage.contains(sampleOrder.customerName))
 
         assertTrue(arMessage.contains(sampleOrder.orderNumber))
         assertTrue(arMessage.contains("أونيكس كوفي"))
         assertTrue(arMessage.contains(sampleOrder.customerName))
+    }
+
+    @Test
+    fun testWebsiteIntegrationUrlsDeepLinksAndCatalogParsing() {
+        val config = WebsiteIntegrationConfig()
+        assertEquals("https://onyxcoffeeiraq.com", config.websiteUrl)
+        assertEquals(WebsitePlatformType.CUSTOM_REST, config.platformType)
+        assertTrue(config.autoSyncOrdersToWebsite)
+
+        assertEquals(
+            "https://onyxcoffeeiraq.com/",
+            com.example.data.remote.OnyxWebsiteSyncService.normalizeBaseUrl("onyxcoffeeiraq.com")
+        )
+        assertEquals(
+            "https://onyxcoffeeiraq.com/product/p_ethiopia_1",
+            com.example.data.remote.OnyxWebsiteSyncService.buildProductShareUrl("onyxcoffeeiraq.com", "p_ethiopia_1")
+        )
+        assertEquals(
+            "https://onyxcoffeeiraq.com/track?order=ONYX-IQ-8421",
+            com.example.data.remote.OnyxWebsiteSyncService.buildTrackOrderUrl("https://onyxcoffeeiraq.com/", "ONYX-IQ-8421")
+        )
+
+        val assetLinks = com.example.data.remote.OnyxWebsiteSyncService.buildAssetLinksJson()
+        assertTrue(assetLinks.contains("com.aistudio.onyxcoffee.iqmkt"))
+        assertTrue(assetLinks.contains("delegate_permission/common.handle_all_urls"))
+
+        // Deep link routing verification
+        val shopAction = com.example.data.remote.OnyxWebsiteSyncService.parseDeepLink("https://onyxcoffeeiraq.com/shop/coffee")
+        assertEquals(com.example.data.remote.OnyxDeepLinkAction.OpenShop(ProductCategory.COFFEE), shopAction)
+
+        val productAction = com.example.data.remote.OnyxWebsiteSyncService.parseDeepLink("https://www.onyxcoffeeiraq.com/product/p_colombia_geisha")
+        assertEquals(com.example.data.remote.OnyxDeepLinkAction.OpenProduct("p_colombia_geisha"), productAction)
+
+        val trackAction = com.example.data.remote.OnyxWebsiteSyncService.parseDeepLink("https://onyxcoffeeiraq.com/track?order=ONYX-IQ-8421")
+        assertEquals(com.example.data.remote.OnyxDeepLinkAction.OpenTrackOrder("ONYX-IQ-8421"), trackAction)
+
+        val journalAction = com.example.data.remote.OnyxWebsiteSyncService.parseDeepLink("https://onyxcoffeeiraq.com/journal")
+        assertEquals(com.example.data.remote.OnyxDeepLinkAction.OpenJournal, journalAction)
+
+        // JSON parsing verification for Custom REST and WooCommerce arrays
+        val customJson = """
+            {
+              "products": [
+                {
+                  "id": "web_baghdad_blend",
+                  "sku": "COF-WEB-01",
+                  "nameEn": "Baghdad Heritage Espresso",
+                  "nameAr": "إسبريسو تراث بغداد",
+                  "priceIqd": 29000,
+                  "category": "COFFEE",
+                  "stockQuantity": 40,
+                  "imageUrl": "/images/baghdad.jpg"
+                }
+              ]
+            }
+        """.trimIndent()
+        val parsedCustom = com.example.data.remote.OnyxWebsiteSyncService.parseProductsJson(customJson, "https://onyxcoffeeiraq.com")
+        assertEquals(1, parsedCustom.size)
+        assertEquals("web_baghdad_blend", parsedCustom[0].id)
+        assertEquals(29000L, parsedCustom[0].regularPriceIqd)
+        assertEquals("https://onyxcoffeeiraq.com/images/baghdad.jpg", parsedCustom[0].imageUrl)
+
+        val wooJson = """
+            [
+              {
+                "id": "wc_501",
+                "name": "Erbil Highland Pour Over",
+                "regular_price": "34000",
+                "stock_quantity": 15,
+                "images": [{"src": "https://onyxcoffeeiraq.com/wp-content/uploads/erbil.jpg"}]
+              }
+            ]
+        """.trimIndent()
+        val parsedWoo = com.example.data.remote.OnyxWebsiteSyncService.parseProductsJson(wooJson, "https://onyxcoffeeiraq.com")
+        assertEquals(1, parsedWoo.size)
+        assertEquals("wc_501", parsedWoo[0].id)
+        assertEquals(34000L, parsedWoo[0].regularPriceIqd)
+        assertEquals(15, parsedWoo[0].stockQuantity)
     }
 }
 

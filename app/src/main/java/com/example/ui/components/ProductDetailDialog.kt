@@ -35,8 +35,10 @@ import com.example.ui.theme.*
 fun ProductDetailDialog(
     product: Product,
     onDismiss: () -> Unit,
-    onAddToCart: (selectedGram: Int, qty: Int) -> Unit
+    onAddToCart: (selectedGram: Int, qty: Int) -> Unit,
+    websiteUrl: String = "https://onyxcoffeeiraq.com"
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val strings = onyxStrings()
     val language = LocalAppLanguage.current
     var selectedPackageGram by remember { mutableStateOf(product.coffeeSpecs?.defaultPackageGram ?: 250) }
@@ -66,7 +68,7 @@ fun ProductDetailDialog(
                 modifier = Modifier
                     .fillMaxSize()
             ) {
-                // Header with Back/Close and Brand
+                // Header with Back/Close, Brand, and Share Link
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -77,7 +79,7 @@ fun ProductDetailDialog(
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier
-                            .size(36.dp)
+                            .minimumInteractiveComponentSize()
                             .background(OnyxCardDark, CircleShape)
                             .testTag("close_detail_btn")
                     ) {
@@ -98,7 +100,27 @@ fun ProductDetailDialog(
                         )
                     )
 
-                    Box(modifier = Modifier.size(36.dp)) // Spacer balance
+                    IconButton(
+                        onClick = {
+                            com.example.data.remote.OnyxWebsiteSyncService.shareProductLink(
+                                context = context,
+                                websiteUrl = websiteUrl,
+                                productName = product.localizedName(language),
+                                productId = product.id
+                            )
+                        },
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .background(OnyxCardDark, CircleShape)
+                            .testTag("share_product_website_link_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = strings.shareProductLinkDesc,
+                            tint = OnyxGold,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
 
                 Divider(color = OnyxCardBorder)

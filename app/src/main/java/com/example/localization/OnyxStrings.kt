@@ -681,6 +681,73 @@ class OnyxStrings(private val lang: AppLanguage) {
         AppLanguage.ARABIC -> "إرسال إشعار فوري تلقائي للواتساب عند كل طلب جديد"
         AppLanguage.ENGLISH -> "Auto-open WhatsApp notification on new orders"
     }
+
+    // Website Integration Strings (onyxcoffeeiraq.com)
+    val tabWebsite: String get() = when (lang) {
+        AppLanguage.KURDISH -> "ماڵپەڕ (onyxcoffeeiraq.com)"
+        AppLanguage.ARABIC -> "الموقع (onyxcoffeeiraq.com)"
+        AppLanguage.ENGLISH -> "Website (onyxcoffeeiraq.com)"
+    }
+    val websiteSectionTitle: String get() = when (lang) {
+        AppLanguage.KURDISH -> "بەستنەوەی ئەپ بە ماڵپەڕی onyxcoffeeiraq.com"
+        AppLanguage.ARABIC -> "ربط التطبيق بموقع onyxcoffeeiraq.com"
+        AppLanguage.ENGLISH -> "Website Bridge • onyxcoffeeiraq.com"
+    }
+    val websiteDomainLabel: String get() = when (lang) {
+        AppLanguage.KURDISH -> "ناونیشانی ماڵپەڕی فەرمی:"
+        AppLanguage.ARABIC -> "رابط الموقع الرسمي:"
+        AppLanguage.ENGLISH -> "Official Website Domain URL:"
+    }
+    val websitePlatformLabel: String get() = when (lang) {
+        AppLanguage.KURDISH -> "جۆری سیستەمی ماڵپەڕ (API):"
+        AppLanguage.ARABIC -> "نوع نظام الموقع (API):"
+        AppLanguage.ENGLISH -> "Website Backend Platform (API):"
+    }
+    val websiteTestConnectionBtn: String get() = when (lang) {
+        AppLanguage.KURDISH -> "تاقیکردنەوەی پەیوەندی ماڵپەڕ"
+        AppLanguage.ARABIC -> "اختبار الاتصال بالموقع"
+        AppLanguage.ENGLISH -> "Test Live Connection"
+    }
+    val websiteSyncProductsBtn: String get() = when (lang) {
+        AppLanguage.KURDISH -> "هاوکاتکردنی بەرهەمەکان لە ماڵپەڕەوە"
+        AppLanguage.ARABIC -> "مزامنة المنتجات من الموقع"
+        AppLanguage.ENGLISH -> "Sync Catalog Now"
+    }
+    val websiteVisitBtn: String get() = when (lang) {
+        AppLanguage.KURDISH -> "سەردانی onyxcoffeeiraq.com"
+        AppLanguage.ARABIC -> "زيارة onyxcoffeeiraq.com"
+        AppLanguage.ENGLISH -> "Visit onyxcoffeeiraq.com"
+    }
+    val websiteAutoSyncOrdersLabel: String get() = when (lang) {
+        AppLanguage.KURDISH -> "ناردنی ئۆتۆماتیکی داواکارییە نوێیەکان بۆ ماڵپەڕ"
+        AppLanguage.ARABIC -> "مزامنة الطلبات الجديدة تلقائياً مع الموقع"
+        AppLanguage.ENGLISH -> "Auto-push new app orders to onyxcoffeeiraq.com"
+    }
+    val websiteAutoSyncCatalogLabel: String get() = when (lang) {
+        AppLanguage.KURDISH -> "نوێکردنەوەی بەرهەمەکان لە ماڵپەڕەوە لە کاتی کردنەوەی ئەپ"
+        AppLanguage.ARABIC -> "تحديث قائمة المنتجات تلقائياً من الموقع عند فتح التطبيق"
+        AppLanguage.ENGLISH -> "Auto-sync product catalog from website on launch"
+    }
+    val websiteOfficialCardTitle: String get() = when (lang) {
+        AppLanguage.KURDISH -> "ماڵپەڕی فەرمی • onyxcoffeeiraq.com"
+        AppLanguage.ARABIC -> "الموقع الإلكتروني الرسمي • onyxcoffeeiraq.com"
+        AppLanguage.ENGLISH -> "Official Storefront • onyxcoffeeiraq.com"
+    }
+    val websiteOfficialCardSubtitle: String get() = when (lang) {
+        AppLanguage.KURDISH -> "کڕینی ڕاستەوخۆ و بەستنەوەی لینکەکانی ماڵپەڕ لەگەڵ ئەپ"
+        AppLanguage.ARABIC -> "تصفح المتجر الإلكتروني وافتح روابط المنتجات مباشرة في التطبيق"
+        AppLanguage.ENGLISH -> "Browse online & open onyxcoffeeiraq.com links directly in-app"
+    }
+    val websiteRefreshTrackingBtn: String get() = when (lang) {
+        AppLanguage.KURDISH -> "نوێکردنەوەی دۆخ لە onyxcoffeeiraq.com"
+        AppLanguage.ARABIC -> "تحديث الحالة من onyxcoffeeiraq.com"
+        AppLanguage.ENGLISH -> "Refresh Live Status from Website"
+    }
+    val shareProductLinkDesc: String get() = when (lang) {
+        AppLanguage.KURDISH -> "هاوبەشکردنی بەستەری onyxcoffeeiraq.com"
+        AppLanguage.ARABIC -> "مشاركة رابط المنتج على onyxcoffeeiraq.com"
+        AppLanguage.ENGLISH -> "Share onyxcoffeeiraq.com product link"
+    }
 }
 
 @Composable

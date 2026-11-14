@@ -405,7 +405,70 @@ data class JournalArticle(
 )
 
 data class StoreSettings(
-    val adminWhatsAppNumber: String = "+9647501234567",
+    val adminWhatsAppNumber: String = "+9647723058251",
     val autoSendWhatsAppOnOrder: Boolean = true,
-    val storeName: String = "ONYX Coffee Roasters Iraq"
+    val storeName: String = "ONYX Coffee Roasters Iraq",
+    val websiteUrl: String = "https://onyxcoffeeiraq.com"
+)
+
+enum class WebsitePlatformType(
+    val labelEn: String,
+    val labelAr: String,
+    val labelKu: String,
+    val productsEndpoint: String,
+    val ordersEndpoint: String
+) {
+    CUSTOM_REST(
+        labelEn = "ONYX Custom REST API (/api/v1)",
+        labelAr = "واجهة ONYX المخصصة (/api/v1)",
+        labelKu = "ڕووکاری تایبەتی ONYX (/api/v1)",
+        productsEndpoint = "api/v1/products",
+        ordersEndpoint = "api/v1/orders"
+    ),
+    WOOCOMMERCE(
+        labelEn = "WordPress / WooCommerce REST API",
+        labelAr = "ووردبريس / WooCommerce API",
+        labelKu = "وۆردپرێس / WooCommerce API",
+        productsEndpoint = "wp-json/wc/v3/products",
+        ordersEndpoint = "wp-json/wc/v3/orders"
+    ),
+    SHOPIFY(
+        labelEn = "Shopify JSON Storefront",
+        labelAr = "متجر Shopify",
+        labelKu = "فرۆشگای Shopify",
+        productsEndpoint = "products.json",
+        ordersEndpoint = "admin/api/2025-01/orders.json"
+    );
+
+    fun localizedLabel(language: AppLanguage): String = when (language) {
+        AppLanguage.KURDISH -> labelKu
+        AppLanguage.ARABIC -> labelAr
+        AppLanguage.ENGLISH -> labelEn
+    }
+}
+
+enum class WebsiteConnectionStatus(val labelEn: String, val labelAr: String, val labelKu: String) {
+    NOT_TESTED("Ready to Connect", "جاهز للربط", "ئامادەیە بۆ بەستنەوە"),
+    TESTING("Testing Connection...", "جارٍ فحص الاتصال...", "پشکنینی پەیوەندی..."),
+    CONNECTED("Connected Live", "متصل بنجاح بالموقع", "پەیوەستە بە ماڵپەڕەوە"),
+    OFFLINE_OR_PENDING("Site Offline / Pending DNS", "الموقع غير متاح حالياً أو قيد الإعداد", "ماڵپەڕ ئێستا بەردەست نییە"),
+    ERROR("API Auth / Endpoint Error", "خطأ في مسار الـ API أو الصلاحيات", "هەڵە لە کۆد یان ڕێڕەوی API");
+
+    fun localizedLabel(language: AppLanguage): String = when (language) {
+        AppLanguage.KURDISH -> labelKu
+        AppLanguage.ARABIC -> labelAr
+        AppLanguage.ENGLISH -> labelEn
+    }
+}
+
+data class WebsiteIntegrationConfig(
+    val websiteUrl: String = "https://onyxcoffeeiraq.com",
+    val platformType: WebsitePlatformType = WebsitePlatformType.CUSTOM_REST,
+    val apiKey: String = "",
+    val apiSecret: String = "",
+    val autoSyncOrdersToWebsite: Boolean = true,
+    val autoSyncCatalogOnLaunch: Boolean = false,
+    val connectionStatus: WebsiteConnectionStatus = WebsiteConnectionStatus.NOT_TESTED,
+    val statusDetail: String = "Configured for https://onyxcoffeeiraq.com",
+    val lastSyncedEpoch: Long? = null
 )

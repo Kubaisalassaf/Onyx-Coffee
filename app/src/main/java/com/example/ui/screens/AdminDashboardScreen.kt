@@ -53,6 +53,11 @@ fun AdminDashboardScreen(
     storeSettings: StoreSettings = StoreSettings(),
     onUpdateAdminWhatsApp: (String) -> Unit = {},
     onUpdateAutoNotifyWhatsApp: (Boolean) -> Unit = {},
+    websiteConfig: WebsiteIntegrationConfig = WebsiteIntegrationConfig(),
+    websiteSyncLogs: List<String> = emptyList(),
+    onUpdateWebsiteConfig: (WebsiteIntegrationConfig) -> Unit = {},
+    onTestWebsiteConnection: () -> Unit = {},
+    onSyncProductsFromWebsite: () -> Unit = {},
     onExitAdmin: () -> Unit
 ) {
     val strings = onyxStrings()
@@ -143,7 +148,8 @@ fun AdminDashboardScreen(
             strings.tabProducts,
             strings.tabOrders,
             strings.tabCustomers,
-            strings.tabLogistics
+            strings.tabLogistics,
+            strings.tabWebsite
         )
 
         ScrollableTabRow(
@@ -204,6 +210,13 @@ fun AdminDashboardScreen(
             4 -> AdminLogisticsTab(
                 governorateFees = governorateFees,
                 onUpdateFee = onUpdateGovernorateFee
+            )
+            5 -> AdminWebsiteTab(
+                websiteConfig = websiteConfig,
+                syncLogs = websiteSyncLogs,
+                onUpdateConfig = onUpdateWebsiteConfig,
+                onTestConnection = onTestWebsiteConnection,
+                onSyncCatalog = onSyncProductsFromWebsite
             )
         }
     }
@@ -2344,3 +2357,478 @@ private fun AddProductDialog(
         containerColor = OnyxSurfaceDark
     )
 }
+
+@Composable
+private fun AdminWebsiteTab(
+    websiteConfig: WebsiteIntegrationConfig,
+    syncLogs: List<String>,
+    onUpdateConfig: (WebsiteIntegrationConfig) -> Unit,
+    onTestConnection: () -> Unit,
+    onSyncCatalog: () -> Unit
+) {
+    val strings = onyxStrings()
+    val language = LocalAppLanguage.current
+    val context = LocalContext.current
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    var urlInput by remember(websiteConfig.websiteUrl) { mutableStateOf(websiteConfig.websiteUrl) }
+    var selectedPlatform by remember(websiteConfig.platformType) { mutableStateOf(websiteConfig.platformType) }
+    var apiKeyInput by remember(websiteConfig.apiKey) { mutableStateOf(websiteConfig.apiKey) }
+    var apiSecretInput by remember(websiteConfig.apiSecret) { mutableStateOf(websiteConfig.apiSecret) }
+    var autoSyncOrders by remember(websiteConfig.autoSyncOrdersToWebsite) { mutableStateOf(websiteConfig.autoSyncOrdersToWebsite) }
+    var autoSyncCatalog by remember(websiteConfig.autoSyncCatalogOnLaunch) { mutableStateOf(websiteConfig.autoSyncCatalogOnLaunch) }
+    var copiedAssetLinks by remember { mutableStateOf(false) }
+
+    val assetLinksSnippet = remember {
+        com.example.data.remote.OnyxWebsiteSyncService.buildAssetLinksJson()
+    }
+
+    val statusColor = when (websiteConfig.connectionStatus) {
+        WebsiteConnectionStatus.CONNECTED -> StatusSuccess
+        WebsiteConnectionStatus.TESTING -> OnyxGold
+        WebsiteConnectionStatus.ERROR -> StatusError
+        WebsiteConnectionStatus.OFFLINE_OR_PENDING -> OnyxGoldDark
+        WebsiteConnectionStatus.NOT_TESTED -> OnyxCream
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Header + Status Card
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = OnyxCardDark),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, OnyxGold),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Language,
+                                contentDescription = null,
+                                tint = OnyxGold,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Text(
+                                text = strings.websiteSectionTitle,
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    color = OnyxGold,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+
+                        Surface(
+                            color = statusColor.copy(alpha = 0.18f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, statusColor)
+                        ) {
+                            Text(
+                                text = websiteConfig.connectionStatus.localizedLabel(language),
+                                color = statusColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = websiteConfig.statusDetail,
+                        style = MaterialTheme.typography.bodySmall.copy(color = OnyxWarmBeige)
+                    )
+
+                    if (websiteConfig.connectionStatus == WebsiteConnectionStatus.TESTING) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = OnyxGold,
+                            trackColor = OnyxSurfaceDark
+                        )
+                    }
+                }
+            }
+        }
+
+        // Configuration Form Card
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = OnyxSurfaceDark),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, OnyxCardBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = strings.websiteDomainLabel,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            color = OnyxCream,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = urlInput,
+                        onValueChange = { urlInput = it },
+                        placeholder = { Text("https://onyxcoffeeiraq.com", color = OnyxMutedText) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_website_url_input"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = OnyxGold,
+                            unfocusedBorderColor = OnyxCardBorder,
+                            focusedTextColor = OnyxCream,
+                            unfocusedTextColor = OnyxCream
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    Text(
+                        text = strings.websitePlatformLabel,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            color = OnyxCream,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        WebsitePlatformType.values().forEach { platform ->
+                            val isSelected = selectedPlatform == platform
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) OnyxGold.copy(alpha = 0.16f) else OnyxCardDark,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isSelected) OnyxGold else OnyxCardBorder
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = 48.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { selectedPlatform = platform }
+                                    .testTag("platform_${platform.name}")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = platform.localizedLabel(language),
+                                        color = if (isSelected) OnyxGold else OnyxCream,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 13.sp
+                                    )
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = "Selected",
+                                            tint = OnyxGold,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = apiKeyInput,
+                        onValueChange = { apiKeyInput = it },
+                        label = { Text("API Key / Consumer Key / Bearer Token (Optional)") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_website_api_key_input"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = OnyxGold,
+                            unfocusedBorderColor = OnyxCardBorder,
+                            focusedTextColor = OnyxCream,
+                            unfocusedTextColor = OnyxCream
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    if (selectedPlatform == WebsitePlatformType.WOOCOMMERCE) {
+                        OutlinedTextField(
+                            value = apiSecretInput,
+                            onValueChange = { apiSecretInput = it },
+                            label = { Text("WooCommerce Consumer Secret (cs_...)") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("admin_website_api_secret_input"),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = OnyxGold,
+                                unfocusedBorderColor = OnyxCardBorder,
+                                focusedTextColor = OnyxCream,
+                                unfocusedTextColor = OnyxCream
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = strings.websiteAutoSyncOrdersLabel,
+                            style = MaterialTheme.typography.bodySmall.copy(color = OnyxWarmBeige),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = autoSyncOrders,
+                            onCheckedChange = { autoSyncOrders = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = OnyxDeepBlack,
+                                checkedTrackColor = OnyxGold
+                            )
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = strings.websiteAutoSyncCatalogLabel,
+                            style = MaterialTheme.typography.bodySmall.copy(color = OnyxWarmBeige),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = autoSyncCatalog,
+                            onCheckedChange = { autoSyncCatalog = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = OnyxDeepBlack,
+                                checkedTrackColor = OnyxGold
+                            )
+                        )
+                    }
+
+                    val saveCurrentConfig = {
+                        onUpdateConfig(
+                            websiteConfig.copy(
+                                websiteUrl = urlInput,
+                                platformType = selectedPlatform,
+                                apiKey = apiKeyInput,
+                                apiSecret = apiSecretInput,
+                                autoSyncOrdersToWebsite = autoSyncOrders,
+                                autoSyncCatalogOnLaunch = autoSyncCatalog
+                            )
+                        )
+                    }
+
+                    Button(
+                        onClick = saveCurrentConfig,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = OnyxGold,
+                            contentColor = OnyxDeepBlack
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("admin_website_save_btn")
+                    ) {
+                        Icon(imageVector = Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "Save Website Bridge Settings", fontWeight = FontWeight.Bold)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                saveCurrentConfig()
+                                onTestConnection()
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnyxGold),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, OnyxGold),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 48.dp)
+                                .testTag("admin_website_test_btn")
+                        ) {
+                            Icon(imageVector = Icons.Default.WifiTethering, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = strings.websiteTestConnectionBtn, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                saveCurrentConfig()
+                                onSyncCatalog()
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnyxCream),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, OnyxCardBorder),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 48.dp)
+                                .testTag("admin_website_sync_catalog_btn")
+                        ) {
+                            Icon(imageVector = Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = strings.websiteSyncProductsBtn, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            com.example.data.remote.OnyxWebsiteSyncService.openWebsiteUrl(context, urlInput)
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = OnyxWarmBeige),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, OnyxCardBorder),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("admin_website_visit_btn")
+                    ) {
+                        Icon(imageVector = Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = strings.websiteVisitBtn, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Server Setup Blueprint & App Links Verification Card
+        item {
+            val normalizedBase = com.example.data.remote.OnyxWebsiteSyncService.normalizeBaseUrl(urlInput)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = OnyxSurfaceDark),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, OnyxCardBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Server & App Links Setup Blueprint",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            color = OnyxGold,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    Text(
+                        text = "1. REST API Endpoints expected on your domain:",
+                        style = MaterialTheme.typography.labelMedium.copy(color = OnyxCream, fontWeight = FontWeight.SemiBold)
+                    )
+                    Text(
+                        text = "• GET ${normalizedBase}${selectedPlatform.productsEndpoint}\n• POST ${normalizedBase}${selectedPlatform.ordersEndpoint}\n• GET ${normalizedBase}api/v1/orders/track/{orderNumber}",
+                        style = MaterialTheme.typography.bodySmall.copy(color = OnyxWarmBeige, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "2. Upload to ${normalizedBase}.well-known/assetlinks.json for verified Android deep links:",
+                        style = MaterialTheme.typography.labelMedium.copy(color = OnyxCream, fontWeight = FontWeight.SemiBold)
+                    )
+                    Surface(
+                        color = OnyxDeepBlack,
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, OnyxCardBorder),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = assetLinksSnippet,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = OnyxGoldLight,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp
+                            ),
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(assetLinksSnippet))
+                            copiedAssetLinks = true
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = OnyxGold),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, OnyxGoldDark),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("admin_copy_assetlinks_btn")
+                    ) {
+                        Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (copiedAssetLinks) "Copied assetlinks.json!" else "Copy assetlinks.json for Server",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // Sync Activity Logs
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = OnyxSurfaceDark),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, OnyxCardBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Sync Activity Log",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            color = OnyxGold,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    syncLogs.forEach { logEntry ->
+                        Text(
+                            text = logEntry,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = OnyxMutedText,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
